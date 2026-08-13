@@ -1,0 +1,16 @@
+# SecuGen UPx-family fingerprint scanners — WebUSB device access on Linux.
+#
+# Without these rules the browser cannot open /dev/bus/usb/* for the scanner
+# and USBDevice.open() throws "SecurityError: Access denied".
+#
+# Install (requires root, once per machine):
+#   sudo cp 60-secugen.rules /etc/udev/rules.d/60-secugen.rules
+#   sudo udevadm control --reload
+#   sudo udevadm trigger
+#   # then unplug + replug the scanner (or reboot the machine)
+#
+# MODE="0666" + GROUP="plugdev" gives the plugdev group rw access;
+# TAG+="uaccess" lets systemd-logind grant it to the active desktop session.
+
+SUBSYSTEM=="usb", ATTR{idVendor}=="1162", ATTR{idProduct}=="2201", MODE="0666", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1162", ATTR{idProduct}=="2310", MODE="0666", GROUP="plugdev", TAG+="uaccess"
