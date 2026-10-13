@@ -6,6 +6,7 @@ import {
   HUPX_HEADER_BYTES,
   HUPX_WIDTH,
   HUPX_HEIGHT,
+  HUPX_TRAILING_BYTES,
   HUPX_FRAME_BYTES,
   UPXAP_HEADER_BYTES,
   UPXAP_WIDTH,
@@ -29,16 +30,22 @@ describe("product registry", () => {
   it("looks up the HUPx profile by its product id", () => {
     const product = getScannerProduct(SECUGEN_HUPX_PRODUCT_ID);
     expect(product.name).toBe("HUPx");
+    expect(product.protocol).toBe("register");
+    expect(product.sampling).toBe("plain");
     expect(product.headerBytes).toBe(HUPX_HEADER_BYTES);
     expect(product.width).toBe(HUPX_WIDTH);
     expect(product.height).toBe(HUPX_HEIGHT);
     expect(product.frameBytes).toBe(HUPX_FRAME_BYTES);
-    expect(product.frameBytes).toBe(HUPX_HEADER_BYTES + HUPX_WIDTH * HUPX_HEIGHT);
+    expect(product.frameBytes).toBe(
+      HUPX_HEADER_BYTES + HUPX_WIDTH * HUPX_HEIGHT + HUPX_TRAILING_BYTES,
+    );
   });
 
   it("looks up the UPx-AP profile by its product id", () => {
     const product = getScannerProduct(SECUGEN_UPXAP_PRODUCT_ID);
     expect(product.name).toBe("UPx-AP");
+    expect(product.protocol).toBe("class-command");
+    expect(product.sampling).toBe("quincunx");
     expect(product.headerBytes).toBe(UPXAP_HEADER_BYTES);
     expect(product.width).toBe(UPXAP_WIDTH);
     expect(product.height).toBe(UPXAP_HEIGHT);
@@ -50,10 +57,12 @@ describe("product registry", () => {
     expect(getScannerProduct(undefined).productId).toBe(SECUGEN_PRODUCT_ID);
   });
 
-  it("HUPx geometry is 260×300, UPx-AP is 1400×1000", () => {
-    expect([HUPX_WIDTH, HUPX_HEIGHT]).toEqual([260, 300]);
+  it("HUPx geometry is 552×356 plain + 96 trailing, UPx-AP is 1400×1000", () => {
+    expect([HUPX_WIDTH, HUPX_HEIGHT]).toEqual([552, 356]);
+    expect(HUPX_HEADER_BYTES).toBe(0);
+    expect(HUPX_TRAILING_BYTES).toBe(96);
+    expect(HUPX_FRAME_BYTES).toBe(196_608);
     expect([UPXAP_WIDTH, UPXAP_HEIGHT]).toEqual([1400, 1000]);
-    expect(HUPX_FRAME_BYTES).toBe(78_012);
     expect(UPXAP_FRAME_BYTES).toBe(1_400_012);
   });
 });

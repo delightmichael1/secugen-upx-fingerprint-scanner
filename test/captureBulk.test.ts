@@ -5,6 +5,7 @@ import {
   HUPX_FRAME_BYTES,
   HUPX_WIDTH,
   HUPX_HEIGHT,
+  HUPX_TRAILING_BYTES,
   UPXAP_FRAME_BYTES,
   UPXAP_WIDTH,
   UPXAP_HEIGHT,
@@ -14,23 +15,23 @@ import { fakeUsb, makeFrame } from "./helpers/fakeUsb.js";
 /**
  * Regression tests for `captureBulk` frame reading.
  *
- * The HUPx times out because WebUSB's `transferIn` resolves as soon as a
- * *short* (< requested) packet arrives, so the reader must stop at the short
- * packet — NOT demand an exact frame size. Demanding exactly
- * `expectedFrameBytes` hangs when the real frame is a different size, which is
- * exactly the "capture timed out" bug.
+ * The HUPx streams the frame continuously and does NOT end it with a short
+ * packet, so the reader must request exactly `expectedFrameBytes` and stop once
+ * that many bytes are in hand (a short packet / ZLP still terminates early for
+ * devices that do use them). Demanding a 1 MiB ceiling instead over-read past
+ * the 196,608-byte frame and misaligned the decoded image.
  */
 describe("captureBulk — HUPx frame reading", () => {
   it("returns a HUPx-sized frame delivered in one transfer", async () => {
     const device = fakeUsb({ productId: SECUGEN_HUPX_PRODUCT_ID });
-    const frame = makeFrame(HUPX_WIDTH, HUPX_HEIGHT, 12, 0xa5);
+    const frame = makeFrame(HUPX_WIDTH, HUPX_HEIGHT, 0, 0xa5, HUPX_TRAILING_BYTES);
     device.queueFrame(frame);
 
     const scanner = new SecuGenScanner(device);
     const out = await scanner.captureBulk();
 
     expect(out.byteLength).toBe(HUPX_FRAME_BYTES);
-    expect(Array.from(out.subarray(0, 4))).toEqual([0, 0, 0, 0]);
+    expect(out[0]).toBe(0xa5);
     expect(out[HUPX_FRAME_BYTES - 1]).toBe(0xa5);
     // One short read terminates the frame; no extra transferIn calls.
     expect(device.transferInRequests).toHaveLength(1);
@@ -38,7 +39,7 @@ describe("captureBulk — HUPx frame reading", () => {
 
   it("does not hang when the frame is shorter than the expected size", async () => {
     const device = fakeUsb({ productId: SECUGEN_HUPX_PRODUCT_ID });
-    // Frame trimmed below the 78,012-byte expectation (e.g. warmup / variant).
+    // Frame trimmed below the 196,608-byte expectation (e.g. warmup / variant).
     device.queueFrame(new Uint8Array(10_000));
     const scanner = new SecuGenScanner(device);
     const out = await scanner.captureBulk();
@@ -79,7 +80,7 @@ describe("captureBulk — HUPx frame reading", () => {
 describe("captureBulk free function", () => {
   it("captures raw bytes off the device", async () => {
     const device = fakeUsb({ productId: SECUGEN_HUPX_PRODUCT_ID });
-    device.queueFrame(makeFrame(HUPX_WIDTH, HUPX_HEIGHT, 12, 0x42));
+    device.queueFrame(makeFrame(HUPX_WIDTH, HUPX_HEIGHT, 0, 0x42, HUPX_TRAILING_BYTES));
     const { captureBulk } = await import("../src/index.js");
     const out = await captureBulk(device);
     expect(out.byteLength).toBe(HUPX_FRAME_BYTES);

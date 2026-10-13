@@ -29,10 +29,13 @@ const makeQuincunxFrame = (
 };
 
 describe("decodeRawImage — geometry", () => {
-  it("decodes a HUPx 260×300 frame to the product geometry", () => {
-    const raw = makeQuincunxFrame(HUPX_WIDTH, HUPX_HEIGHT, 12, 200);
+  it("decodes a HUPx 552×356 plain frame to the product geometry", () => {
+    // Plain HUPx frame: no header, 552×356 row-major pixels + 96 trailing.
+    const pixels = new Uint8Array(HUPX_WIDTH * HUPX_HEIGHT).fill(200);
+    const raw = new Uint8Array(pixels.length + 96);
+    raw.set(pixels);
     const image = decodeRawImage(raw, {
-      headerBytes: 12,
+      sampling: "plain",
       width: HUPX_WIDTH,
       height: HUPX_HEIGHT,
       fill: "none",
@@ -40,10 +43,13 @@ describe("decodeRawImage — geometry", () => {
       rotate: 0,
       gamma: null,
     });
-    expect(image.width).toBe(260);
-    expect(image.height).toBe(300);
-    expect(image.byteLength).toBe(260 * 300);
+    expect(image.width).toBe(552);
+    expect(image.height).toBe(356);
+    expect(image.byteLength).toBe(552 * 356);
     expect(image.channels).toBe(1);
+    // Trailing padding is dropped; row-major bytes land in order.
+    expect(image.raw[0]).toBe(200);
+    expect(image.raw[HUPX_WIDTH]).toBe(200);
   });
 
   it("decodes a UPx-AP 1400×1000 frame to the product geometry", () => {
@@ -126,7 +132,7 @@ describe("decodeRawImage — pixel pipeline", () => {
   });
 
   it("tolerates a truncated frame shorter than the declared header+body", () => {
-    const raw = new Uint8Array(100); // far below 260×300
+    const raw = new Uint8Array(100); // far below 640×307
     const image = decode(raw);
     expect(image.byteLength).toBe(HUPX_WIDTH * HUPX_HEIGHT);
     expect(image.raw.every((v) => v === 0)).toBe(true);

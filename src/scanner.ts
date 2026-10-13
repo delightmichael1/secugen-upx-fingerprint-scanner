@@ -42,9 +42,11 @@ export const resolveScannerOptions = (
   options: ScannerOptions = {},
 ): ResolvedScannerOptions => {
   const d = DEFAULT_SCANNER_OPTIONS;
-  // The connected product (HUPx vs UPx-AP) only changes the geometry — the
-  // frame-bytes default follows the product when the caller didn't override it.
+  // The connected product (HUPx vs UPx-AP) changes the geometry AND the
+  // capture protocol, so both the frame-bytes default and the protocol
+  // defaults follow the product when the caller didn't override them.
   const product = getScannerProduct(options.productId);
+  const isRegister = product.protocol === "register";
   const initBlock =
     typeof options.initBlock === "string"
       ? hexToBytes(options.initBlock)
@@ -74,18 +76,73 @@ export const resolveScannerOptions = (
     ledBrightnessCommand: options.ledBrightnessCommand
       ? [...options.ledBrightnessCommand]
       : [...d.ledBrightnessCommand],
-    ledOnCommand: options.ledOnCommand ? [...options.ledOnCommand] : [...d.ledOnCommand],
-    ledOffCommand: options.ledOffCommand ? [...options.ledOffCommand] : [...d.ledOffCommand],
+    ledOnCommand: options.ledOnCommand
+      ? [...options.ledOnCommand]
+      : [...d.ledOnCommand],
+    ledOffCommand: options.ledOffCommand
+      ? [...options.ledOffCommand]
+      : [...d.ledOffCommand],
     registerWriteTemplate: options.registerWriteTemplate
       ? [...options.registerWriteTemplate]
       : [...d.registerWriteTemplate],
     exposureRegisters: options.exposureRegisters
-      ? options.exposureRegisters.map(([reg, val]) => [reg, val] as [number, number])
-      : [...d.exposureRegisters].map(([reg, val]) => [reg, val] as [number, number]),
-    warmupCapture: options.warmupCapture ?? d.warmupCapture,
+      ? options.exposureRegisters.map(
+          ([reg, val]) => [reg, val] as [number, number],
+        )
+      : (product.exposureRegisters ?? d.exposureRegisters).map(
+          ([reg, val]) => [reg, val] as [number, number],
+        ),
+    warmupCapture:
+      options.warmupCapture ??
+      (isRegister ? false : d.warmupCapture),
     ledHoldMs: options.ledHoldMs ?? d.ledHoldMs,
     captureTimeoutMs: options.captureTimeoutMs ?? d.captureTimeoutMs,
     expectedFrameBytes: options.expectedFrameBytes ?? product.frameBytes,
+    protocol: isRegister ? "register" : "class-command",
+    register: {
+      request: options.register?.request ?? d.register.request,
+      value: options.register?.value ?? d.register.value,
+      verify: options.register?.verify ?? d.register.verify,
+      triggerRequest:
+        options.register?.triggerRequest ?? d.register.triggerRequest,
+      triggerValue: options.register?.triggerValue ?? d.register.triggerValue,
+      statusRequest: options.register?.statusRequest ?? d.register.statusRequest,
+      statusIndex: options.register?.statusIndex ?? d.register.statusIndex,
+      statusLength: options.register?.statusLength ?? d.register.statusLength,
+      cmd01Request:
+        options.register?.cmd01Request ?? d.register.cmd01Request,
+      cmd02Request:
+        options.register?.cmd02Request ?? d.register.cmd02Request,
+      cmd11Request:
+        options.register?.cmd11Request ?? d.register.cmd11Request,
+      ledOnValue: options.register?.ledOnValue ?? d.register.ledOnValue,
+      ledOffValue: options.register?.ledOffValue ?? d.register.ledOffValue,
+      statusPollRequest:
+        options.register?.statusPollRequest ?? d.register.statusPollRequest,
+      statusPollLength:
+        options.register?.statusPollLength ?? d.register.statusPollLength,
+      calibrateGainRegisters: options.register?.calibrateGainRegisters
+        ? options.register.calibrateGainRegisters.map(
+            ([reg, val]) => [reg, val] as [number, number],
+          )
+        : [...d.register.calibrateGainRegisters].map(
+            ([reg, val]) => [reg, val] as [number, number],
+          ),
+      captureGainRegisters: options.register?.captureGainRegisters
+        ? options.register.captureGainRegisters.map(
+            ([reg, val]) => [reg, val] as [number, number],
+          )
+        : [...d.register.captureGainRegisters].map(
+            ([reg, val]) => [reg, val] as [number, number],
+          ),
+      initRegisters: options.register?.initRegisters
+        ? options.register.initRegisters.map(
+            ([reg, val]) => [reg, val] as [number, number],
+          )
+        : [...d.register.initRegisters].map(
+            ([reg, val]) => [reg, val] as [number, number],
+          ),
+    },
   };
 };
 
@@ -97,10 +154,12 @@ export const resolveScannerOptions = (
 export const resolveScannerOptionsForDevice = (
   device: Pick<USBDevice, "productId">,
   options: ScannerOptions = {},
-): { scan: ResolvedScannerOptions; decode: DecodeOptions; product: SecuGenProduct } => {
-  const product = getScannerProduct(
-    options.productId ?? device.productId,
-  );
+): {
+  scan: ResolvedScannerOptions;
+  decode: DecodeOptions;
+  product: SecuGenProduct;
+} => {
+  const product = getScannerProduct(options.productId ?? device.productId);
   const scan = resolveScannerOptions({
     ...options,
     productId: product.productId,
@@ -110,6 +169,7 @@ export const resolveScannerOptionsForDevice = (
     scan,
     decode: {
       headerBytes: product.headerBytes,
+      sampling: product.sampling,
       width: product.width,
       height: product.height,
     },
@@ -119,7 +179,10 @@ export const resolveScannerOptionsForDevice = (
 
 const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("Scanner capture timed out")), ms);
+    const timer = setTimeout(
+      () => reject(new Error("Scanner capture timed out")),
+      ms,
+    );
     promise.then(
       (val) => {
         clearTimeout(timer);
@@ -191,21 +254,132 @@ export class SecuGenScanner {
     return this.sendCommand(payload, this.opts.registerWindow);
   }
 
+  /** Builds a vendor-device control setup for the HUPx register protocol. */
+  private regSetup(request: number, value: number, index: number): ControlTransferSetup {
+    return {
+      requestType: "vendor",
+      recipient: "device",
+      request,
+      value,
+      index,
+    };
+  }
+
+  /**
+   * Writes one HUPx register via the register envelope (bRequest 0x22, wValue
+   * 0x0033, wIndex = register), then reads it back to verify (the demo writes
+   * each register and confirms the echo before moving on).
+   */
+  private async writeRegisterRegister(reg: number, val: number): Promise<void> {
+    const r = this.opts.register;
+    const setup = this.regSetup(r.request, r.value, reg);
+    await this.device.controlTransferOut(setup, new Uint8Array([val]));
+    if (r.verify) {
+      await this.device.controlTransferIn(setup, 1);
+    }
+  }
+
+  /**
+   * HUPx register-based capture, mirroring the vendor demo's per-scan sequence
+   * (confirmed from a live capture):
+   *
+   * 1. Register init — arms the sensor (each written + read-back verified).
+   * 2. Pass 1 (discarded calibrate): TRIG → status (bReq 8) → short-exposure
+   *    calibrate gain → TRIG → cmd01 → bulk read (discard) → cmd02. The sensor
+   *    needs this first short-exposure capture before the real one is sharp.
+   * 3. Pass 2 (real capture): long-exposure registers (R240-244) → TRIG →
+   *    long gain (R48/R49) → image-ready status poll (bReq 0x16) ×2 → cmd11
+   *    LED ON → gain again → TRIG → cmd01 → bulk read (the frame) → cmd02 →
+   *    status poll → cmd11 LED OFF.
+   *
+   * The bulk image (552×356 + 96 trailing padding = 196,608 bytes) streams on
+   * the IN endpoint between the two readout-gate commands.
+   */
+  private async captureRegister(): Promise<Uint8Array> {
+    const device = this.device;
+    const r = this.opts.register;
+    // 1. Register init — arms the sensor.
+    for (const [reg, val] of this.opts.register.initRegisters) {
+      await this.writeRegisterRegister(reg, val);
+    }
+    const trig = () =>
+      device.controlTransferOut(
+        this.regSetup(r.triggerRequest, r.triggerValue, 0),
+        new Uint8Array(0),
+      );
+    const cmd = (req: number) =>
+      device.controlTransferOut(this.regSetup(req, 0, 0), new Uint8Array(0));
+    const status = (req: number, index: number, length: number) =>
+      device.controlTransferIn(this.regSetup(req, 0, index), length);
+
+    // 2. Pass 1 — short-exposure calibrate frame (discarded).
+    await trig();
+    try {
+      await status(r.statusRequest, r.statusIndex, r.statusLength);
+    } catch {
+      // non-fatal — the bulk read below still blocks until the frame is ready
+    }
+    for (const [reg, val] of r.calibrateGainRegisters) {
+      await this.writeRegisterRegister(reg, val);
+    }
+    await trig();
+    await cmd(r.cmd01Request);
+    await this.captureBulk(); // discarded calibrate frame
+    await cmd(r.cmd02Request);
+
+    // 3. Pass 2 — long exposure + LED on + real capture.
+    for (const [reg, val] of this.opts.exposureRegisters) {
+      await this.writeRegisterRegister(reg, val);
+    }
+    await trig();
+    for (const [reg, val] of r.captureGainRegisters) {
+      await this.writeRegisterRegister(reg, val);
+    }
+    try {
+      await status(r.statusPollRequest, 0, r.statusPollLength);
+      await status(r.statusPollRequest, 0, r.statusPollLength);
+    } catch {
+      // non-fatal — the LED + readout gate below still proceed
+    }
+    await device.controlTransferOut(
+      this.regSetup(r.cmd11Request, r.ledOnValue, 0),
+      new Uint8Array(0),
+    ); // LED on
+    for (const [reg, val] of r.captureGainRegisters) {
+      await this.writeRegisterRegister(reg, val);
+    }
+    await trig();
+    await cmd(r.cmd01Request);
+    const frame = await this.captureBulk(); // the real frame
+    await cmd(r.cmd02Request);
+    try {
+      await status(r.statusPollRequest, 0, r.statusPollLength);
+    } catch {
+      // non-fatal
+    }
+    await device.controlTransferOut(
+      this.regSetup(r.cmd11Request, r.ledOffValue, 0),
+      new Uint8Array(0),
+    ); // LED off
+    return frame;
+  }
+
   /**
    * Reads one frame from the bulk IN endpoint. The device streams the frame
-   * as one transfer (many URBs), which ends with a USB short packet (or
-   * zero-length packet). We read until that end marker rather than demanding
-   * an exact frame size — the product geometry is only a *hint* (used to
-   * sanity-check + decode), so a real HUPx/UPx-AP frame of slightly different
-   * size still completes instead of hanging into the timeout.
+   * as one transfer (many URBs) and does NOT end it with a short packet on
+   * this sensor family, so the read must request exactly the expected frame
+   * size and stop once that many bytes are in hand. A short packet or ZLP
+   * still terminates early for devices that do use them. Previously this read
+   * requested up to 1 MiB for the HUPx, over-reading past the 196,608-byte
+   * frame and misaligning the decoded image.
    */
-  async captureBulk(expectedLength: number = this.opts.expectedFrameBytes): Promise<Uint8Array> {
-    // Safety ceiling for a single transfer — generous, never waits past EOF.
-    const frameCap = Math.max(expectedLength, 1 << 20);
+  async captureBulk(
+    expectedLength: number = this.opts.expectedFrameBytes,
+  ): Promise<Uint8Array> {
     const chunks: Uint8Array[] = [];
     let received = 0;
-    let want = frameCap;
-    while (received < frameCap) {
+    while (received < expectedLength) {
+      const want = expectedLength - received;
       const result = await this.device.transferIn(this.opts.bulkEndpoint, want);
       const view = result.data;
       const chunk = new Uint8Array(
@@ -234,7 +408,15 @@ export class SecuGenScanner {
     return out;
   }
 
-  /** Drains the warmup capture frame (may arrive truncated; discarded). */
+  /**
+   * Drains the warmup capture frame AND flushes any leftover bytes still
+   * sitting in the device's endpoint FIFO, so the next captureBulk() call
+   * (the real frame) starts clean instead of picking up warmup tail bytes.
+   * Loops until the endpoint returns nothing / a short read, rather than
+   * trusting a single call's first short packet as end-of-frame — on this
+   * sensor family the on-device FIFO can still have queued bytes behind an
+   * apparently-complete warmup read.
+   */
   async drainWarmup(): Promise<void> {
     try {
       await this.captureBulk();
@@ -267,10 +449,22 @@ export class SecuGenScanner {
   }
 
   /**
-   * Runs the full capture sequence and returns the raw frame
-   * (header + pixels, e.g. 1,400,012 bytes).
+   * Runs the full capture sequence and returns the raw frame. The flow depends
+   * on the connected product's protocol:
+   *  - UPx-AP ("class-command"): init block → setup → registers → warmup →
+   *    LED → capture → LED off.
+   *  - HUPx ("register"): two-pass (calibrate discarded, then real with LED)
+   *    — see {@link captureRegister} for the exact control sequence.
    */
   async capture(): Promise<Uint8Array> {
+    if (this.opts.protocol === "register") {
+      return withTimeout(this.captureRegister(), this.opts.captureTimeoutMs);
+    }
+    return withTimeout(this.captureClassCommand(), this.opts.captureTimeoutMs);
+  }
+
+  /** Class-command capture flow (UPx-AP). */
+  private async captureClassCommand(): Promise<Uint8Array> {
     const run = async (): Promise<Uint8Array> => {
       const device = this.device;
       // 1. Init block — arms the sensor.
@@ -284,10 +478,11 @@ export class SecuGenScanner {
       for (const [reg, val] of this.opts.exposureRegisters) {
         await this.writeRegister(reg, val);
       }
-      // 4. Warmup capture (frame discarded).
+      // 4. Warmup capture (frame discarded, FIFO flushed).
       if (this.opts.warmupCapture) {
         await this.sendCommand(this.opts.captureCommand);
         await this.drainWarmup();
+        await delay(50); // let the endpoint fully quiesce before the real capture
       }
       // 5. LED on for the real capture. Held for a visible window and to let
       //    the finger settle on the platen.
@@ -303,24 +498,26 @@ export class SecuGenScanner {
       await this.sendCommand(this.opts.ledOffCommand);
       return frame;
     };
-    return withTimeout(run(), this.opts.captureTimeoutMs);
+    return run();
   }
 
   /**
    * Captures and decodes in one call, returning a {@link DecodedFingerprint}.
-   * Pass {@link DecodeOptions} to tune contrast / polarity / orientation.
-   * Width/height/header default to the detected product's geometry.
+   * Pass {@link DecodeOptions} to tune contrast / polarity / orientation /
+   * crop. Width/height/header default to the detected product's geometry.
    */
   async scan(decodeOptions: DecodeOptions = {}): Promise<DecodedFingerprint> {
     const frame = await this.capture();
     return decodeRawImage(frame, {
       headerBytes: decodeOptions.headerBytes ?? this.product.headerBytes,
+      sampling: decodeOptions.sampling ?? this.product.sampling,
       width: decodeOptions.width ?? this.product.width,
       height: decodeOptions.height ?? this.product.height,
       fill: decodeOptions.fill,
       invert: decodeOptions.invert,
       rotate: decodeOptions.rotate,
       gamma: decodeOptions.gamma,
+      crop: decodeOptions.crop,
     });
   }
 }
@@ -390,14 +587,16 @@ export const captureBulk = async (
   device: USBDevice,
   expectedLength?: number,
   options: ScannerOptions = {},
-): Promise<Uint8Array> => new SecuGenScanner(device, options).captureBulk(expectedLength);
+): Promise<Uint8Array> =>
+  new SecuGenScanner(device, options).captureBulk(expectedLength);
 
 /** Captures a frame and decodes it in one call. */
 export const scanAndDecode = async (
   device: USBDevice,
   scanOptions: ScannerOptions = {},
   decodeOptions: DecodeOptions = {},
-): Promise<DecodedFingerprint> => new SecuGenScanner(device, scanOptions).scan(decodeOptions);
+): Promise<DecodedFingerprint> =>
+  new SecuGenScanner(device, scanOptions).scan(decodeOptions);
 
 /** Convenience factory for a configured scanner instance. */
 export const createScanner = (

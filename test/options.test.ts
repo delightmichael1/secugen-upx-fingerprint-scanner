@@ -12,14 +12,21 @@ import { fakeUsb } from "./helpers/fakeUsb.js";
 describe("resolveScannerOptions", () => {
   it("applies product-appropriate frame bytes when productId is set", () => {
     const hupx = resolveScannerOptions({ productId: SECUGEN_HUPX_PRODUCT_ID });
-    expect(hupx.expectedFrameBytes).toBe(78_012);
+    expect(hupx.expectedFrameBytes).toBe(196_608);
+    expect(hupx.protocol).toBe("register");
+    expect(hupx.register.request).toBe(0x22);
+    expect(hupx.register.value).toBe(0x0033);
+    expect(hupx.register.initRegisters.length).toBeGreaterThan(100);
 
     const upxAp = resolveScannerOptions({ productId: SECUGEN_UPXAP_PRODUCT_ID });
     expect(upxAp.expectedFrameBytes).toBe(1_400_012);
+    expect(upxAp.protocol).toBe("class-command");
   });
 
   it("defaults to UPx-AP frame bytes with no product id", () => {
-    expect(resolveScannerOptions({}).expectedFrameBytes).toBe(1_400_012);
+    const opts = resolveScannerOptions({});
+    expect(opts.expectedFrameBytes).toBe(1_400_012);
+    expect(opts.protocol).toBe("class-command");
   });
 
   it("honours an explicit expectedFrameBytes override", () => {
@@ -45,10 +52,11 @@ describe("resolveScannerOptionsForDevice", () => {
     const device = fakeUsb({ productId: SECUGEN_HUPX_PRODUCT_ID });
     const resolved = resolveScannerOptionsForDevice(device);
     expect(resolved.product.name).toBe("HUPx");
-    expect(resolved.scan.expectedFrameBytes).toBe(78_012);
-    expect(resolved.decode.width).toBe(260);
-    expect(resolved.decode.height).toBe(300);
-    expect(resolved.decode.headerBytes).toBe(12);
+    expect(resolved.scan.expectedFrameBytes).toBe(196_608);
+    expect(resolved.decode.width).toBe(552);
+    expect(resolved.decode.height).toBe(356);
+    expect(resolved.decode.headerBytes).toBe(0);
+    expect(resolved.decode.sampling).toBe("plain");
   });
 
   it("detects UPx-AP geometry from the device product id", () => {
@@ -58,6 +66,7 @@ describe("resolveScannerOptionsForDevice", () => {
     expect(resolved.scan.expectedFrameBytes).toBe(1_400_012);
     expect(resolved.decode.width).toBe(1400);
     expect(resolved.decode.height).toBe(1000);
+    expect(resolved.decode.sampling).toBe("quincunx");
   });
 });
 

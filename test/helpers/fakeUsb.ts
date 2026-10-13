@@ -7,6 +7,8 @@
 export interface RecordedControlTransfer {
   setup: USBControlTransferSetup;
   data?: Uint8Array;
+  /** true for controlTransferIn calls (register read-back / status polls). */
+  read?: boolean;
 }
 
 export interface FakeUsbOptions {
@@ -68,8 +70,31 @@ export class FakeUsbDevice implements USBDevice {
       setup: { ...setup },
       data: data ? new Uint8Array(data as ArrayBuffer) : undefined,
     });
+    if (setup.request === 0x22 && data && data.byteLength === 1) {
+      this.regValues.set(setup.index, new Uint8Array(data as ArrayBuffer)[0]);
+    }
     return { status: "ok", bytesWritten: data ? data.byteLength : 0 };
   }
+
+  /**
+   * Records the setup and returns a 1-byte echo (the value last written to
+   * that register, if known) so the register-protocol read-back verify passes.
+   * `controlTransfers` uses the same shape as the OUT records but with a
+   * `read: true` flag, so tests can distinguish register reads from writes.
+   */
+  async controlTransferIn(
+    setup: USBControlTransferSetup,
+    length: number,
+  ): Promise<{ data: DataView; status: string }> {
+    this.controlTransfers.push({ setup: { ...setup }, read: true });
+    const echoed = this.regValues.get(setup.index) ?? 0;
+    const out = new Uint8Array(length);
+    out[0] = echoed;
+    return { data: new DataView(out.buffer), status: "ok" };
+  }
+
+  /** Tracks the last value written to each register (for read-back echoes). */
+  private regValues = new Map<number, number>();
 
   async transferIn(
     endpointNumber: number,
@@ -126,8 +151,9 @@ export const makeFrame = (
   height: number,
   headerBytes = 12,
   fill = 0xa5,
+  trailingBytes = 0,
 ): Uint8Array => {
-  const bytes = new Uint8Array(headerBytes + width * height);
+  const bytes = new Uint8Array(headerBytes + width * height + trailingBytes);
   bytes.fill(fill, headerBytes);
   return bytes;
 };
