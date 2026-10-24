@@ -25,6 +25,9 @@ export {
 
 export { decodeRawImage } from "./decode.js";
 
+export { toIsoImage } from "./iso.js";
+export type { IsoImage, IsoImageOptions } from "./iso.js";
+
 export {
   SECUGEN_VENDOR_ID,
   SECUGEN_PRODUCT_ID,
@@ -70,10 +73,14 @@ export {
   DEFAULT_EXPOSURE_REGISTERS,
   DEFAULT_SCANNER_OPTIONS,
   DEFAULT_DECODE_OPTIONS,
+  ISO_IMAGE_WIDTH,
+  ISO_IMAGE_HEIGHT,
+  ISO_IMAGE_DPI,
 } from "./constants.js";
 
 export type {
   SecuGenProduct,
+  FrameOrientation,
   ScannerOptions,
   DecodeOptions,
   DecodedFingerprint,

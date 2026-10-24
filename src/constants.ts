@@ -312,6 +312,9 @@ export const SCANNER_PRODUCTS: readonly SecuGenProduct[] = [
     height: HUPX_HEIGHT,
     frameBytes: HUPX_FRAME_BYTES,
     exposureRegisters: HUPX_EXPOSURE_REGISTERS,
+    // Unverified against the official SDK (no reference capture yet), so the
+    // historical orientation is kept and no resolution is claimed.
+    orientation: "rotate-180",
   },
   {
     productId: SECUGEN_UPXAP_PRODUCT_ID,
@@ -323,6 +326,13 @@ export const SCANNER_PRODUCTS: readonly SecuGenProduct[] = [
     height: UPXAP_HEIGHT,
     frameBytes: UPXAP_FRAME_BYTES,
     exposureRegisters: DEFAULT_EXPOSURE_REGISTERS,
+    // Calibrated against an ISO 19794-2 template the official SecuGen stack
+    // (Nexus dashboard) produced for the same finger: the SecuGen matcher only
+    // scores the pair as the same finger (192/199) with a vertical flip — a
+    // 180° rotation gives the mirror image — and with this anisotropic grid
+    // (a minutiae affine fit puts it at ~1800 × ~1160 dpi, ±4%).
+    orientation: "flip-vertical",
+    resolutionDpi: { x: 1800, y: 1160 },
   },
 ];
 
@@ -425,6 +435,14 @@ export const DEFAULT_SCANNER_OPTIONS = {
 } as const;
 
 /** Default decoder behaviour (see DecodeOptions). */
+/**
+ * Standard SecuGen image (what SGFPM_GetImage returns, and the geometry in
+ * the Nexus switch's own ISO/IEC 19794-2 templates): 300×400 at 500 dpi.
+ */
+export const ISO_IMAGE_WIDTH = 300;
+export const ISO_IMAGE_HEIGHT = 400;
+export const ISO_IMAGE_DPI = 500;
+
 export const DEFAULT_DECODE_OPTIONS = {
   headerBytes: UPXAP_HEADER_BYTES,
   sampling: "quincunx",
@@ -432,7 +450,7 @@ export const DEFAULT_DECODE_OPTIONS = {
   height: UPXAP_HEIGHT,
   fill: "orthogonal-mean",
   invert: true,
-  rotate: 180,
+  orientation: "flip-vertical",
   gamma: { target: 200, min: 0.5, max: 2.2 },
   contrast: { lowPercentile: 1, highPercentile: 99 },
 } as const;

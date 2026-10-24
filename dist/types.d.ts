@@ -107,7 +107,26 @@ export interface SecuGenProduct {
      * the class-command exposure registers via the register window.
      */
     exposureRegisters: ReadonlyArray<readonly [number, number]>;
+    /** Orientation fix the decoder applies for this product (see {@link DecodeOptions.orientation}). */
+    orientation: FrameOrientation;
+    /**
+     * True sampling resolution of the decoded grid, in dots per inch per axis.
+     * Calibrated by matching our extraction against templates the official
+     * SecuGen stack produced for the same finger; {@link toIsoImage} uses it to
+     * resample to a true 500 dpi. Undefined while a product is uncalibrated.
+     */
+    resolutionDpi?: {
+        x: number;
+        y: number;
+    };
 }
+/**
+ * How the decoded grid is turned upright. "flip-vertical" reverses the row
+ * order only; "rotate-180" reverses rows and columns (a mirror of
+ * "flip-vertical" — getting this wrong yields a mirrored print that no other
+ * system's template will ever match).
+ */
+export type FrameOrientation = "flip-vertical" | "rotate-180" | "none";
 /**
  * Scanner tuning options. Every field has a verified SecuGen UPx-AP default
  * (see {@link DEFAULT_SCANNER_OPTIONS}); supply only the fields you want to
@@ -253,8 +272,17 @@ export interface DecodeOptions {
     fill?: "orthogonal-mean" | "none";
     /** Invert polarity so ridges render dark on a light background (default true). */
     invert?: boolean;
-    /** Rotation to apply after decode (default 180 — sensor reads bottom-up). */
+    /**
+     * Legacy orientation switch: 180 = "rotate-180", 0 = "none". Ignored when
+     * {@link orientation} is set.
+     */
     rotate?: 0 | 180;
+    /**
+     * Orientation fix applied after decode. Defaults to the UPx-AP's
+     * "flip-vertical" (its sensor streams rows bottom-up but columns
+     * left-to-right); pass the detected product's `orientation` for others.
+     */
+    orientation?: FrameOrientation;
     /**
      * Adaptive gamma that normalises the frame median to a target brightness so
      * flat / bright captures still show good contrast. Pass `null` to disable.

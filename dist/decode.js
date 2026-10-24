@@ -11,9 +11,12 @@
  * bright-on-dark; the vendor demo displays dark-ridges-on-light), an adaptive
  * gamma pass (normalises median brightness), an adaptive contrast stretch
  * (normalises ridge/background separation — gamma alone leaves captures
- * muddy since the background-heavy histogram barely moves the median), a
- * 180° rotation (the sensor reads the array bottom-up), then an optional
- * dead-border crop.
+ * muddy since the background-heavy histogram barely moves the median), the
+ * product's orientation fix (UPx-AP: a vertical flip — the sensor streams its
+ * rows bottom-up), then an optional dead-border crop.
+ *
+ * The UPx-AP grid is not square (~1800 × ~1160 dpi); use {@link toIsoImage}
+ * to get the 500 dpi image fingerprint extractors expect.
  */
 import { DEFAULT_DECODE_OPTIONS, UPXAP_FRAME_BYTES, UPXAP_HEADER_BYTES, UPXAP_HEIGHT, UPXAP_WIDTH, } from "./constants.js";
 /**
@@ -27,7 +30,12 @@ export const decodeRawImage = (raw, options = {}) => {
     const height = options.height ?? UPXAP_HEIGHT;
     const fill = options.fill ?? "orthogonal-mean";
     const invert = options.invert ?? true;
-    const rotate = options.rotate ?? 180;
+    const orientation = options.orientation ??
+        (options.rotate === 180
+            ? "rotate-180"
+            : options.rotate === 0
+                ? "none"
+                : DEFAULT_DECODE_OPTIONS.orientation);
     const body = raw.length > headerBytes ? raw.subarray(headerBytes) : raw;
     const pixels = new Uint8Array(width * height);
     // 1. Place the samples. Quincunx (UPx-AP) lands bytes on (x + y) odd cells;
@@ -158,9 +166,18 @@ export const decodeRawImage = (raw, options = {}) => {
             }
         }
     }
-    // 4. Rotate (sensor reads the array bottom-up).
-    if (rotate === 180) {
+    // 4. Orient. "flip-vertical" reverses the row order only; "rotate-180"
+    //    also reverses each row, which mirrors the print.
+    if (orientation === "rotate-180") {
         pixels.reverse();
+    }
+    else if (orientation === "flip-vertical") {
+        const row = new Uint8Array(width);
+        for (let top = 0, bottom = height - 1; top < bottom; top++, bottom--) {
+            row.set(pixels.subarray(top * width, (top + 1) * width));
+            pixels.copyWithin(top * width, bottom * width, (bottom + 1) * width);
+            pixels.set(row, bottom * width);
+        }
     }
     // 5. Crop fixed dead-border pixels (sensor bezel edges / readout seam).
     // Applied last, on the final oriented image, so margins line up with what

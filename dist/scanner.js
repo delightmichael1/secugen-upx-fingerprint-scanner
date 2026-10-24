@@ -118,6 +118,7 @@ export const resolveScannerOptionsForDevice = (device, options = {}) => {
             sampling: product.sampling,
             width: product.width,
             height: product.height,
+            orientation: product.orientation,
         },
         product,
     };
@@ -415,6 +416,11 @@ export class SecuGenScanner {
             fill: decodeOptions.fill,
             invert: decodeOptions.invert,
             rotate: decodeOptions.rotate,
+            // An explicit legacy `rotate` keeps working; otherwise the product's fix.
+            orientation: decodeOptions.orientation ??
+                (decodeOptions.rotate === undefined
+                    ? this.product.orientation
+                    : undefined),
             gamma: decodeOptions.gamma,
             contrast: decodeOptions.contrast,
             crop: decodeOptions.crop,

@@ -4,7 +4,8 @@ Framework-agnostic WebUSB driver + decoder for the **SecuGen UPx-family** finger
 scanners:
 
 - **HUPx** — Hamster Pro (`VID 0x1162` / PID `0x2201`, "UPx class"), 552×356 @ 500 DPI
-- **UPx-AP** — Hamster Pro V2 (`VID 0x1162` / PID `0x2310`), 1400×1000 @ 500 DPI
+- **UPx-AP** — Hamster Pro V2 (`VID 0x1162` / PID `0x2310`), 1400×1000 quincunx on a
+  non-square ~1800 × 1160 DPI grid (use `toIsoImage` for a 500 DPI image)
 
 The connected product is **auto-detected** from its USB product id, so the same call
 captures + decodes at the correct frame size for whichever device is plugged in.
@@ -48,7 +49,21 @@ sudo udevadm trigger
 # then unplug + replug the scanner (a plain browser reload is not enough)
 ```
 
-Windows and macOS need no setup.
+## Windows: WinUSB driver (required once per machine)
+
+Windows installs no driver for the scanner by itself, so it never appears in the browser's
+device chooser (Device Manager shows it under **Other devices** with error code 28). Bind
+Windows' built-in WinUSB driver — nothing to download, administrator rights needed:
+
+1. Device Manager → right-click **SecuGen UPx-AP** (or **SecuGen HUPx**) → **Update driver**.
+2. **Browse my computer for drivers** → **Let me pick from a list of available drivers on my computer**.
+3. **Universal Serial Bus devices** → **Next** → **WinUsb Device** on both sides → **Next** → **Yes**.
+4. Unplug and replug the scanner.
+
+SecuGen's own Windows driver claims the scanner instead and blocks WebUSB; uninstall it
+from Device Manager (tick *Attempt to remove the driver for this device*) first.
+
+macOS needs no setup.
 
 ## Quick start
 
@@ -183,7 +198,7 @@ frames are **plain row-major 8-bit** pixels with no sampling gaps:
 1. **sampling** — `"quincunx"` (UPx-AP) or `"plain"` (HUPx),
 2. **fill** — empty quincunx cells averaged from orthogonal neighbours (`"orthogonal-mean"` or `"none"`),
 3. **invert** — polarity (`true` = dark ridges on light, the demo look),
-4. **rotate** — `0` | `180` (sensor reads bottom-up),
+4. **orientation** — `"flip-vertical"` (UPx-AP) | `"rotate-180"` (HUPx) | `"none"`,
 5. **gamma** — adaptive brightness normalisation (see below).
 
 | Option             | Default                               | Meaning                                            |
@@ -193,7 +208,7 @@ frames are **plain row-major 8-bit** pixels with no sampling gaps:
 | `width` / `height` | product geometry                      | Output dimensions (1400/1000 UPx-AP, 640/307 HUPx) |
 | `fill`             | `"orthogonal-mean"`                   | Interpolation of empty quincunx cells              |
 | `invert`           | `true`                                | Polarity                                           |
-| `rotate`           | `180`                                 | Orientation                                        |
+| `orientation`      | product default (`"flip-vertical"`)   | Orientation fix; the legacy `rotate: 0 \| 180` still works when `orientation` is unset |
 | `gamma`            | `{ target: 200, min: 0.5, max: 2.2 }` | Adaptive brightness; `null` disables               |
 
 The adaptive gamma pass computes the median of the decoded, inverted frame and applies a
@@ -214,8 +229,38 @@ Raw frame layouts are product-specific:
   LED-on capture: adjacent-row correlation peaks at a 552-byte row pitch vs
   ~0.015 at the previously-assumed 640, which scrambled every row by 88px.)
 
-The sensor array is read bottom-up, so decoding rotates 180° and inverts to match
-the vendor demo look. All of this is overridable via `DecodeOptions`.
+The UPx-AP streams its rows bottom-up but its columns left-to-right, so decoding flips it
+vertically. (Up to 0.3.x it rotated 180°, which produced the *mirror image* of the print —
+templates from it never matched prints enrolled by other systems.) The HUPx keeps its
+180° rotation until it is checked the same way. All of this is overridable via
+`DecodeOptions`.
+
+## Matching other systems: `toIsoImage`
+
+Fingerprint extractors and the templates other systems enrol assume a square 500 DPI
+image. The UPx-AP grid is not square, so extract from `toIsoImage` instead of the decoded
+frame. It returns the image SecuGen's own SDK produces: resampled to 500 DPI on both axes
+and cropped to the standard 300 × 400 window around the print.
+
+```ts
+const product = detectProduct(device);
+const decoded = decodeRawImage(frame, {
+  ...resolveScannerOptionsForDevice(device).decode,
+  invert: true, // dark ridges, as SecuGen's SDK delivers them
+  gamma: null,
+  contrast: null,
+});
+if (product.resolutionDpi) {
+  const iso = toIsoImage(decoded, product.resolutionDpi); // 300×400 @ 500 DPI
+}
+```
+
+`resolutionDpi` (UPx-AP: `{ x: 1800, y: 1160 }`) was calibrated by scoring our extraction
+against an ISO/IEC 19794-2 template the official SecuGen stack produced for the same
+finger: only a vertical flip, dark ridges and this anisotropic grid score as the same
+finger (184/199 with SecuGen's matcher; the old 180°-rotated, 500/1000 DPI frame scored 2).
+A minutiae affine fit pins the scale to about ±4%; more same-finger pairs would tighten it.
+The HUPx is not calibrated yet (`resolutionDpi` is undefined).
 
 ## Notes
 
@@ -240,4 +285,5 @@ the vendor demo look. All of this is overridable via `DecodeOptions`.
 - The warmup frame may be truncated; `captureBulk` drains it by retrying.
 - Only Chrome/Edge (desktop) expose `navigator.usb`.
 - **Linux permission**: without the udev rules above, `open()` fails with
-  `SecurityError: Access denied` (see the Linux section). Windows/macOS work without setup.
+  `SecurityError: Access denied` (see the Linux section). Windows needs the WinUSB
+  driver (see the Windows section); macOS works without setup.

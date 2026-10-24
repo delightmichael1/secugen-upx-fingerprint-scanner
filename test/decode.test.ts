@@ -116,6 +116,29 @@ describe("decodeRawImage — pixel pipeline", () => {
     expect([...rotated.raw]).toEqual([...plain.raw].reverse());
   });
 
+  it("flip-vertical reverses row order but keeps columns (no mirror)", () => {
+    const width = 4;
+    const height = 3;
+    // Plain frame where each pixel encodes its own position: 10*y + x.
+    const raw = Uint8Array.from({ length: width * height }, (_, i) =>
+      10 * Math.floor(i / width) + (i % width),
+    );
+    const opts = {
+      sampling: "plain" as const,
+      headerBytes: 0,
+      width,
+      height,
+      invert: false,
+      gamma: null,
+      contrast: null,
+    };
+    const flipped = decodeRawImage(raw, { ...opts, orientation: "flip-vertical" });
+    expect([...flipped.raw.subarray(0, width)]).toEqual([20, 21, 22, 23]);
+    expect([...flipped.raw.subarray(2 * width)]).toEqual([0, 1, 2, 3]);
+    const rotated = decodeRawImage(raw, { ...opts, orientation: "rotate-180" });
+    expect([...rotated.raw.subarray(0, width)]).toEqual([23, 22, 21, 20]);
+  });
+
   it("supports adaptive gamma and leaves good frames near gamma 1", () => {
     // Use orthogonal-mean so the whole frame settles ~200 → median 200 =
     // target → gamma ≈ 1 and pixels stay put.

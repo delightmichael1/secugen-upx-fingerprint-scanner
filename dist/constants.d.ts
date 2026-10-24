@@ -179,6 +179,13 @@ export declare const DEFAULT_SCANNER_OPTIONS: {
     };
 };
 /** Default decoder behaviour (see DecodeOptions). */
+/**
+ * Standard SecuGen image (what SGFPM_GetImage returns, and the geometry in
+ * the Nexus switch's own ISO/IEC 19794-2 templates): 300×400 at 500 dpi.
+ */
+export declare const ISO_IMAGE_WIDTH = 300;
+export declare const ISO_IMAGE_HEIGHT = 400;
+export declare const ISO_IMAGE_DPI = 500;
 export declare const DEFAULT_DECODE_OPTIONS: {
     readonly headerBytes: 12;
     readonly sampling: "quincunx";
@@ -186,7 +193,7 @@ export declare const DEFAULT_DECODE_OPTIONS: {
     readonly height: 1000;
     readonly fill: "orthogonal-mean";
     readonly invert: true;
-    readonly rotate: 180;
+    readonly orientation: "flip-vertical";
     readonly gamma: {
         readonly target: 200;
         readonly min: 0.5;

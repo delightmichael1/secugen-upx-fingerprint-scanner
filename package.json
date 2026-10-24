@@ -1,6 +1,6 @@
 {
   "name": "secugen-upx-fingerprint-scanner",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Framework-agnostic WebUSB driver + decoder for the SecuGen UPx family (HUPx 0x2201 and UPx-AP 0x2310) fingerprint scanners. Auto-detects the connected product; capture sequence, register tuning and frame decode reverse-engineered from the vendor demo app and validated on hardware.",
   "type": "module",
   "main": "./dist/index.js",
