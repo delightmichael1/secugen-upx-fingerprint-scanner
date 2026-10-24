@@ -517,6 +517,7 @@ export class SecuGenScanner {
       invert: decodeOptions.invert,
       rotate: decodeOptions.rotate,
       gamma: decodeOptions.gamma,
+      contrast: decodeOptions.contrast,
       crop: decodeOptions.crop,
     });
   }
