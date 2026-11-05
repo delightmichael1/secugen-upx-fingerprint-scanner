@@ -41,6 +41,16 @@ describe("product registry", () => {
     );
   });
 
+  it("calibrates the HUPx onto its 1062 × 593 die grid", () => {
+    // 552×356 is the sensor's whole 13.2×15.2 mm active area with non-square
+    // pixels: 552/13.2 mm = 1062 dpi, 356/15.2 mm = 593 dpi — which resamples
+    // to SecuGen's published 260×300 @ 500 dpi image for this sensor.
+    const hupx = getScannerProduct(SECUGEN_HUPX_PRODUCT_ID);
+    expect(hupx.resolutionDpi).toEqual({ x: 1062, y: 593 });
+    // The HUPx already returns dark ridges; inverting swaps ending/bifurcation.
+    expect(hupx.invertDecoded).toBe(false);
+  });
+
   it("looks up the UPx-AP profile by its product id", () => {
     const product = getScannerProduct(SECUGEN_UPXAP_PRODUCT_ID);
     expect(product.name).toBe("UPx-AP");

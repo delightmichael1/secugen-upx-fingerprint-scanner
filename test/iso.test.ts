@@ -79,4 +79,19 @@ describe("toIsoImage", () => {
     expect(upxAp.orientation).toBe("flip-vertical");
     expect(upxAp.resolutionDpi).toEqual({ x: 1800, y: 1160 });
   });
+
+  it("turns the HUPx raw frame into SecuGen's 260×300 standard image", () => {
+    // 552×356 at 1062×593 dpi is the whole 13.2×15.2 mm active area; at 500 dpi
+    // that is 260×300 px, which the 300×400 canvas then centres.
+    const raw = new Uint8Array(552 * 356).fill(255);
+    const iso = toIsoImage(
+      { raw, width: 552, height: 356 },
+      { x: 1062, y: 593 },
+    );
+    expect(iso).toMatchObject({ width: 300, height: 400, dpi: 500 });
+    // Everything is background, so the print box is empty — but the geometry is
+    // what matters here: 552 × 500/1062 = 260 and 356 × 500/593 = 300.
+    expect(Math.round((552 * 500) / 1062)).toBe(260);
+    expect(Math.round((356 * 500) / 593)).toBe(300);
+  });
 });

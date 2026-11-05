@@ -3,7 +3,9 @@
 Framework-agnostic WebUSB driver + decoder for the **SecuGen UPx-family** fingerprint
 scanners:
 
-- **HUPx** — Hamster Pro (`VID 0x1162` / PID `0x2201`, "UPx class"), 552×356 @ 500 DPI
+- **HUPx** — Hamster Pro (`VID 0x1162` / PID `0x2201`, "UPx class"), 552×356 readout on a
+  non-square ~1062 × 593 DPI grid (use `toIsoImage` for the standard 300×400 window; it
+  reproduces SecuGen's own 260×300 image, centred)
 - **UPx-AP** — Hamster Pro V2 (`VID 0x1162` / PID `0x2310`), 1400×1000 quincunx on a
   non-square ~1800 × 1160 DPI grid (use `toIsoImage` for a 500 DPI image)
 
@@ -238,7 +240,7 @@ templates from it never matched prints enrolled by other systems.) The HUPx keep
 ## Matching other systems: `toIsoImage`
 
 Fingerprint extractors and the templates other systems enrol assume a square 500 DPI
-image. The UPx-AP grid is not square, so extract from `toIsoImage` instead of the decoded
+image. Neither SecuGen grid is square, so extract from `toIsoImage` instead of the decoded
 frame. It returns the image SecuGen's own SDK produces: resampled to 500 DPI on both axes
 and cropped to the standard 300 × 400 window around the print.
 
@@ -260,7 +262,22 @@ against an ISO/IEC 19794-2 template the official SecuGen stack produced for the 
 finger: only a vertical flip, dark ridges and this anisotropic grid score as the same
 finger (184/199 with SecuGen's matcher; the old 180°-rotated, 500/1000 DPI frame scored 2).
 A minutiae affine fit pins the scale to about ±4%; more same-finger pairs would tighten it.
-The HUPx is not calibrated yet (`resolutionDpi` is undefined).
+
+The HUPx is `{ x: 1062, y: 593 }`, and **not** 500 dpi: its 552 × 356 readout is the
+sensor's whole 13.2 × 15.2 mm active area (SecuGen's published "effective sensing area"
+inside an 18.2 × 22.9 mm platen) sampled with heavily non-square pixels — 552 / 13.2 mm =
+1062 dpi across, 356 / 15.2 mm = 593 dpi down. Consistency check: SecuGen's standard image
+for this sensor is 260 × 300 at 500 dpi, and these numbers are exactly what the raw frame
+resamples to (552 × 500 / 1062 = 260, 356 × 500 / 593 = 300). Getting this wrong is fatal —
+the switch compares minutiae at the declared 197 px/cm and tolerates only ~15% scale error,
+so a frame read as 500 dpi puts every HUPx minutia ~2.1× too far apart horizontally and
+~1.19× vertically and can never match an enrolment.
+
+The HUPx also declares `invertDecoded: false`: it already returns **dark ridges on a light
+background**, whereas the UPx-AP returns bright ridges and needs inverting. Polarity must be
+per sensor, not inferred from "is this product calibrated" — inverting the HUPx swaps every
+ridge ending for a bifurcation (measured on one capture: 35 endings / 19 bifurcations as-is
+vs 24 / 29 inverted), and a type-aware matcher rejects the wrong type.
 
 ## Notes
 

@@ -126,6 +126,15 @@ export interface SecuGenProduct {
    * resample to a true 500 dpi. Undefined while a product is uncalibrated.
    */
   resolutionDpi?: { x: number; y: number };
+  /**
+   * Whether the decoded frame has to be inverted to reach SGFPM_GetImage
+   * polarity (dark ridges on a light background). Defaults to `true`: the
+   * UPx-AP — and most optical sensors — return bright ridges on a dark
+   * background. The HUPx is `false`: its raw frame already carries dark ridges,
+   * and inverting it swaps every ridge ending for a bifurcation, which no
+   * type-aware matcher (the Nexus switch) will accept.
+   */
+  invertDecoded?: boolean;
 }
 
 /**

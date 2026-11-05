@@ -289,9 +289,31 @@ export const SCANNER_PRODUCTS = [
         height: HUPX_HEIGHT,
         frameBytes: HUPX_FRAME_BYTES,
         exposureRegisters: HUPX_EXPOSURE_REGISTERS,
-        // Unverified against the official SDK (no reference capture yet), so the
-        // historical orientation is kept and no resolution is claimed.
+        // Orientation is unverified against the official SDK (no reference capture
+        // yet), so the historical rotation is kept. A 180° rotation is not a mirror,
+        // and the matcher is rotation-invariant, so it only affects display.
         orientation: "rotate-180",
+        // The 552 × 356 readout is NOT a 500 dpi image: it is the sensor's whole
+        // 13.2 × 15.2 mm active area (SecuGen's published "effective sensing area";
+        // the plastic platen around it is 18.2 × 22.9 mm) read out with heavily
+        // non-square pixels — 552/13.2 mm = 1062 dpi across, 356/15.2 mm = 593 dpi
+        // down. The vendor's own standard image for this sensor is 260 × 300 at
+        // 500 dpi, which is exactly what these numbers resample to
+        // (552 × 500/1062 = 260, 356 × 500/593 = 300), so this is a consistency
+        // check as much as a calibration.
+        //
+        // Declaring it matters: the Nexus switch compares minutiae at the template's
+        // declared resolution (197 px/cm = 500 dpi) and only tolerates ~15% scale
+        // error. Read as 500 dpi, every HUPx template had its minutiae ~2.1× too
+        // far apart horizontally and ~1.19× vertically, so it could never match an
+        // enrolment — while the same finger from the UPx-AP (a genuinely calibrated
+        // grid) does.
+        resolutionDpi: { x: 1062, y: 593 },
+        // This sensor already delivers dark ridges on a light background (check the
+        // FDx minutia types: extracting it as-is gives more ridge endings than
+        // bifurcations, the same profile as the UPx-AP after inversion). Inverting
+        // it would swap every ending for a bifurcation.
+        invertDecoded: false,
     },
     {
         productId: SECUGEN_UPXAP_PRODUCT_ID,
