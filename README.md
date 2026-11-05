@@ -200,7 +200,8 @@ frames are **plain row-major 8-bit** pixels with no sampling gaps:
 1. **sampling** — `"quincunx"` (UPx-AP) or `"plain"` (HUPx),
 2. **fill** — empty quincunx cells averaged from orthogonal neighbours (`"orthogonal-mean"` or `"none"`),
 3. **invert** — polarity (`true` = dark ridges on light, the demo look),
-4. **orientation** — `"flip-vertical"` (UPx-AP) | `"rotate-180"` (HUPx) | `"none"`,
+4. **orientation** — `"flip-vertical"` | `"flip-horizontal"` | `"rotate-180"` | `"none"`;
+   HUPx also sets `flipHorizontal: true` on top of `"flip-vertical"`,
 5. **gamma** — adaptive brightness normalisation (see below).
 
 | Option             | Default                               | Meaning                                            |
@@ -242,18 +243,18 @@ templates from it never matched prints enrolled by other systems.) The HUPx keep
 Fingerprint extractors and the templates other systems enrol assume a square 500 DPI
 image. Neither SecuGen grid is square, so extract from `toIsoImage` instead of the decoded
 frame. It returns the image SecuGen's own SDK produces: resampled to 500 DPI on both axes
-and cropped to the standard 300 × 400 window around the print.
+and cropped to the product's SecuGen standard window (UPx-AP 300 × 400, HUPx 260 × 300).
 
 ```ts
 const product = detectProduct(device);
 const decoded = decodeRawImage(frame, {
   ...resolveScannerOptionsForDevice(device).decode,
-  invert: true, // dark ridges, as SecuGen's SDK delivers them
+  invert: product.invertDecoded ?? true, // dark ridges, as SecuGen's SDK delivers them
   gamma: null,
   contrast: null,
 });
 if (product.resolutionDpi) {
-  const iso = toIsoImage(decoded, product.resolutionDpi); // 300×400 @ 500 DPI
+  const iso = toIsoImage(decoded, product.resolutionDpi, product.isoImage);
 }
 ```
 
@@ -268,16 +269,17 @@ sensor's whole 13.2 × 15.2 mm active area (SecuGen's published "effective sensi
 inside an 18.2 × 22.9 mm platen) sampled with heavily non-square pixels — 552 / 13.2 mm =
 1062 dpi across, 356 / 15.2 mm = 593 dpi down. Consistency check: SecuGen's standard image
 for this sensor is 260 × 300 at 500 dpi, and these numbers are exactly what the raw frame
-resamples to (552 × 500 / 1062 = 260, 356 × 500 / 593 = 300). Getting this wrong is fatal —
-the switch compares minutiae at the declared 197 px/cm and tolerates only ~15% scale error,
-so a frame read as 500 dpi puts every HUPx minutia ~2.1× too far apart horizontally and
-~1.19× vertically and can never match an enrolment.
+resamples to (552 × 500 / 1062 = 260, 356 × 500 / 593 = 300). Pass that size via
+`product.isoImage` — padding HUPx into 300 × 400 letterboxes the print. Getting the DPI
+wrong is fatal: the switch compares minutiae at the declared 197 px/cm and tolerates only
+~15% scale error, so a frame read as 500 dpi puts every HUPx minutia ~2.1× too far apart
+horizontally and ~1.19× vertically and can never match an enrolment.
 
-The HUPx also declares `invertDecoded: false`: it already returns **dark ridges on a light
-background**, whereas the UPx-AP returns bright ridges and needs inverting. Polarity must be
-per sensor, not inferred from "is this product calibrated" — inverting the HUPx swaps every
-ridge ending for a bifurcation (measured on one capture: 35 endings / 19 bifurcations as-is
-vs 24 / 29 inverted), and a type-aware matcher rejects the wrong type.
+Both products declare `invertDecoded: true` (raw USB frames are bright ridges on a dark
+background). Orientation differs: UPx-AP `"flip-vertical"`; HUPx `"none"` (invert only).
+`flip-horizontal` put the joint crease at the bottom (good) but left the HUPx as a
+horizontal mirror of the UPx-AP (`222338` vs `221654`); orientation `"none"` undoes that
+mirror while keeping the crease at the bottom.
 
 ## Notes
 

@@ -47,8 +47,12 @@ describe("product registry", () => {
     // to SecuGen's published 260×300 @ 500 dpi image for this sensor.
     const hupx = getScannerProduct(SECUGEN_HUPX_PRODUCT_ID);
     expect(hupx.resolutionDpi).toEqual({ x: 1062, y: 593 });
-    // The HUPx already returns dark ridges; inverting swaps ending/bifurcation.
-    expect(hupx.invertDecoded).toBe(false);
+    expect(hupx.isoImage).toEqual({ width: 260, height: 300 });
+    // Bright-on-dark raw → invert; no geometric flip — flip-horizontal left
+    // HUPx as a mirror of the UPx-AP (222338 vs 221654).
+    expect(hupx.orientation).toBe("none");
+    expect(hupx.flipHorizontal).toBe(false);
+    expect(hupx.invertDecoded).toBe(true);
   });
 
   it("looks up the UPx-AP profile by its product id", () => {

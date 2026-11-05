@@ -79,6 +79,9 @@ describe("decodeRawImage — pixel pipeline", () => {
       invert: false,
       rotate: 0,
       gamma: null,
+      // Sparse quincunx fixtures are mostly zeros — the default percentile
+      // stretch would remap the few sample values (e.g. 200 → 255).
+      contrast: null,
       ...extra,
     });
 
@@ -137,6 +140,29 @@ describe("decodeRawImage — pixel pipeline", () => {
     expect([...flipped.raw.subarray(2 * width)]).toEqual([0, 1, 2, 3]);
     const rotated = decodeRawImage(raw, { ...opts, orientation: "rotate-180" });
     expect([...rotated.raw.subarray(0, width)]).toEqual([23, 22, 21, 20]);
+  });
+
+  it("flipHorizontal mirrors left↔right after orientation without moving the tip", () => {
+    const width = 4;
+    const height = 3;
+    const raw = Uint8Array.from({ length: width * height }, (_, i) =>
+      10 * Math.floor(i / width) + (i % width),
+    );
+    const opts = {
+      sampling: "plain" as const,
+      headerBytes: 0,
+      width,
+      height,
+      invert: false,
+      gamma: null,
+      contrast: null,
+      orientation: "flip-vertical" as const,
+      flipHorizontal: true,
+    };
+    const image = decodeRawImage(raw, opts);
+    // flip-vertical then mirror each row: top row was [20,21,22,23] → [23,22,21,20]
+    expect([...image.raw.subarray(0, width)]).toEqual([23, 22, 21, 20]);
+    expect([...image.raw.subarray(2 * width)]).toEqual([3, 2, 1, 0]);
   });
 
   it("supports adaptive gamma and leaves good frames near gamma 1", () => {

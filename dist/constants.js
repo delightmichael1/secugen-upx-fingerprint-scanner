@@ -41,6 +41,15 @@ export const HUPX_WIDTH = 552;
 export const HUPX_HEIGHT = 356;
 export const HUPX_TRAILING_BYTES = 96;
 export const HUPX_FRAME_BYTES = HUPX_HEADER_BYTES + HUPX_WIDTH * HUPX_HEIGHT + HUPX_TRAILING_BYTES; // 196,608
+/**
+ * SecuGen's own standard image for the HUPx (what SGFPM_GetImage returns for
+ * this sensor): 260×300 at 500 dpi. Equals the raw 552×356 frame resampled by
+ * its true die resolution ({@link SCANNER_PRODUCTS} HUPx `resolutionDpi`).
+ * Do NOT pad this into the UPx-AP's 300×400 window — that letterboxes the
+ * print and is not what other SecuGen-based systems enrol from a HUPx.
+ */
+export const HUPX_ISO_IMAGE_WIDTH = 260;
+export const HUPX_ISO_IMAGE_HEIGHT = 300;
 // ── HUPx register protocol ──────────────────────────────────────────────────
 // All vendor ops use bmRequestType 0x40 (OUT) / 0xc0 (IN), i.e. WebUSB
 // requestType "vendor" + recipient "device", with these bRequests:
@@ -289,10 +298,14 @@ export const SCANNER_PRODUCTS = [
         height: HUPX_HEIGHT,
         frameBytes: HUPX_FRAME_BYTES,
         exposureRegisters: HUPX_EXPOSURE_REGISTERS,
-        // Orientation is unverified against the official SDK (no reference capture
-        // yet), so the historical rotation is kept. A 180° rotation is not a mirror,
-        // and the matcher is rotation-invariant, so it only affects display.
-        orientation: "rotate-180",
+        // Same-finger pair vs UPx-AP (221419/221654/222338):
+        //  - flip-vertical put the joint crease at the TOP (wrong).
+        //  - flip-horizontal put the crease at the BOTTOM (correct) but left the
+        //    print as a horizontal mirror of the UPx-AP (222338 vs 221654).
+        //  - orientation "none" (invert only) keeps the crease at the bottom and
+        //    undoes that mirror — H-flip(222338) aligns with the AP.
+        orientation: "none",
+        flipHorizontal: false,
         // The 552 × 356 readout is NOT a 500 dpi image: it is the sensor's whole
         // 13.2 × 15.2 mm active area (SecuGen's published "effective sensing area";
         // the plastic platen around it is 18.2 × 22.9 mm) read out with heavily
@@ -309,11 +322,19 @@ export const SCANNER_PRODUCTS = [
         // enrolment — while the same finger from the UPx-AP (a genuinely calibrated
         // grid) does.
         resolutionDpi: { x: 1062, y: 593 },
-        // This sensor already delivers dark ridges on a light background (check the
-        // FDx minutia types: extracting it as-is gives more ridge endings than
-        // bifurcations, the same profile as the UPx-AP after inversion). Inverting
-        // it would swap every ending for a bifurcation.
-        invertDecoded: false,
+        // SecuGen's own HUPx image is 260×300 @ 500 — not the UPx-AP's 300×400.
+        isoImage: {
+            width: HUPX_ISO_IMAGE_WIDTH,
+            height: HUPX_ISO_IMAGE_HEIGHT,
+        },
+        // Same polarity as the UPx-AP: the raw USB frame is bright ridges on a
+        // dark background (confirmed on real captures under
+        // api/fingerprints/…/upx-frame-p0.png — centre ~65% pixels >180, dark
+        // corners). Invert into SGFPM_GetImage polarity (dark ridges on light)
+        // so the preview and the FDx extractor see the same ridge/valley types
+        // as UPx-AP / Nexus enrolments. An earlier `invertDecoded: false` was
+        // wrong — ending/bif counts alone do not diagnose polarity.
+        invertDecoded: true,
     },
     {
         productId: SECUGEN_UPXAP_PRODUCT_ID,
@@ -332,6 +353,7 @@ export const SCANNER_PRODUCTS = [
         // (a minutiae affine fit puts it at ~1800 × ~1160 dpi, ±4%).
         orientation: "flip-vertical",
         resolutionDpi: { x: 1800, y: 1160 },
+        invertDecoded: true,
     },
 ];
 /** Looks up the product profile for a USB product id (defaults to UPx-AP). */

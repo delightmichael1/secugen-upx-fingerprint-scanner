@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getScannerProduct,
+  SECUGEN_HUPX_PRODUCT_ID,
   SECUGEN_UPXAP_PRODUCT_ID,
   toIsoImage,
 } from "../src/index.js";
@@ -82,16 +83,27 @@ describe("toIsoImage", () => {
 
   it("turns the HUPx raw frame into SecuGen's 260×300 standard image", () => {
     // 552×356 at 1062×593 dpi is the whole 13.2×15.2 mm active area; at 500 dpi
-    // that is 260×300 px, which the 300×400 canvas then centres.
+    // that is exactly 260×300 — SecuGen's own HUPx image. Pass that window so
+    // we do not letterbox into the UPx-AP's 300×400 canvas.
+    const hupx = getScannerProduct(SECUGEN_HUPX_PRODUCT_ID);
     const raw = new Uint8Array(552 * 356).fill(255);
     const iso = toIsoImage(
       { raw, width: 552, height: 356 },
       { x: 1062, y: 593 },
+      hupx.isoImage,
     );
-    expect(iso).toMatchObject({ width: 300, height: 400, dpi: 500 });
-    // Everything is background, so the print box is empty — but the geometry is
-    // what matters here: 552 × 500/1062 = 260 and 356 × 500/593 = 300.
+    expect(iso).toMatchObject({ width: 260, height: 300, dpi: 500 });
     expect(Math.round((552 * 500) / 1062)).toBe(260);
     expect(Math.round((356 * 500) / 593)).toBe(300);
+  });
+
+  it("ships invert for both; HUPx orientation none, UPx-AP flip-vertical", () => {
+    const hupx = getScannerProduct(SECUGEN_HUPX_PRODUCT_ID);
+    const upxAp = getScannerProduct(SECUGEN_UPXAP_PRODUCT_ID);
+    expect(hupx.orientation).toBe("none");
+    expect(hupx.flipHorizontal).toBe(false);
+    expect(upxAp.orientation).toBe("flip-vertical");
+    expect(hupx.invertDecoded).toBe(true);
+    expect(upxAp.invertDecoded).toBe(true);
   });
 });

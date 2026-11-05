@@ -8,12 +8,13 @@
  *    trailing padding bytes that are dropped.
  *
  * The pipeline for both: sample placement, optional inversion (raw readout is
- * bright-on-dark; the vendor demo displays dark-ridges-on-light), an adaptive
- * gamma pass (normalises median brightness), an adaptive contrast stretch
- * (normalises ridge/background separation — gamma alone leaves captures
- * muddy since the background-heavy histogram barely moves the median), the
- * product's orientation fix (UPx-AP: a vertical flip — the sensor streams its
- * rows bottom-up), then an optional dead-border crop.
+ * bright-on-dark on both HUPx and UPx-AP; the vendor demo / SGFPM_GetImage
+ * polarity is dark-ridges-on-light), an adaptive gamma pass (normalises median
+ * brightness), an adaptive contrast stretch (normalises ridge/background
+ * separation — gamma alone leaves captures muddy since the background-heavy
+ * histogram barely moves the median), the product's orientation fix
+ * (UPx-AP: flip-vertical; HUPx: rotate-180 — bottom-up *and* mirrored
+ * relative to the UPx-AP), then an optional dead-border crop.
  *
  * The UPx-AP grid is not square (~1800 × ~1160 dpi); use {@link toIsoImage}
  * to get the 500 dpi image fingerprint extractors expect.
@@ -193,8 +194,9 @@ export const decodeRawImage = (
     }
   }
 
-  // 4. Orient. "flip-vertical" reverses the row order only; "rotate-180"
-  //    also reverses each row, which mirrors the print.
+  // 4. Orient. "flip-vertical" reverses the row order only; "flip-horizontal"
+  //    reverses each row; "rotate-180" reverses the whole buffer (tip flips
+  //    end-for-end — avoid when only a mirror is needed).
   if (orientation === "rotate-180") {
     pixels.reverse();
   } else if (orientation === "flip-vertical") {
@@ -203,6 +205,29 @@ export const decodeRawImage = (
       row.set(pixels.subarray(top * width, (top + 1) * width));
       pixels.copyWithin(top * width, bottom * width, (bottom + 1) * width);
       pixels.set(row, bottom * width);
+    }
+  } else if (orientation === "flip-horizontal") {
+    const row = new Uint8Array(width);
+    for (let y = 0; y < height; y++) {
+      const start = y * width;
+      row.set(pixels.subarray(start, start + width));
+      for (let x = 0; x < width; x++) {
+        pixels[start + x] = row[width - 1 - x];
+      }
+    }
+  }
+
+  // 4b. Optional extra horizontal mirror (HUPx: flip-vertical + flipHorizontal).
+  // Kept separate from "rotate-180" so the tip stays at the same end of the
+  // frame while left↔right is corrected.
+  if (options.flipHorizontal) {
+    const row = new Uint8Array(width);
+    for (let y = 0; y < height; y++) {
+      const start = y * width;
+      row.set(pixels.subarray(start, start + width));
+      for (let x = 0; x < width; x++) {
+        pixels[start + x] = row[width - 1 - x];
+      }
     }
   }
 

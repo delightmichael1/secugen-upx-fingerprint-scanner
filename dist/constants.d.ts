@@ -42,6 +42,15 @@ export declare const HUPX_WIDTH = 552;
 export declare const HUPX_HEIGHT = 356;
 export declare const HUPX_TRAILING_BYTES = 96;
 export declare const HUPX_FRAME_BYTES: number;
+/**
+ * SecuGen's own standard image for the HUPx (what SGFPM_GetImage returns for
+ * this sensor): 260×300 at 500 dpi. Equals the raw 552×356 frame resampled by
+ * its true die resolution ({@link SCANNER_PRODUCTS} HUPx `resolutionDpi`).
+ * Do NOT pad this into the UPx-AP's 300×400 window — that letterboxes the
+ * print and is not what other SecuGen-based systems enrol from a HUPx.
+ */
+export declare const HUPX_ISO_IMAGE_WIDTH = 260;
+export declare const HUPX_ISO_IMAGE_HEIGHT = 300;
 /** bRequest for register reads/writes; wValue is always {@link HUPX_REGISTER_VALUE}. */
 export declare const HUPX_REGISTER_REQUEST = 34;
 /** wValue carried by every register access. wIndex = the register address. */

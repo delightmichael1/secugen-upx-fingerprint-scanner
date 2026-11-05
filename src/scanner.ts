@@ -173,6 +173,7 @@ export const resolveScannerOptionsForDevice = (
       width: product.width,
       height: product.height,
       orientation: product.orientation,
+      flipHorizontal: product.flipHorizontal,
     },
     product,
   };
@@ -523,6 +524,8 @@ export class SecuGenScanner {
         (decodeOptions.rotate === undefined
           ? this.product.orientation
           : undefined),
+      flipHorizontal:
+        decodeOptions.flipHorizontal ?? this.product.flipHorizontal,
       gamma: decodeOptions.gamma,
       contrast: decodeOptions.contrast,
       crop: decodeOptions.crop,

@@ -120,22 +120,38 @@ export interface SecuGenProduct {
         y: number;
     };
     /**
+     * Output window {@link toIsoImage} should produce for this product. Defaults
+     * to SecuGen's 300×400 (UPx-AP). The HUPx's own standard image is 260×300 —
+     * padding that into 300×400 letterboxes the print and is not what other
+     * SecuGen-based systems enrol.
+     */
+    isoImage?: {
+        width: number;
+        height: number;
+    };
+    /**
      * Whether the decoded frame has to be inverted to reach SGFPM_GetImage
-     * polarity (dark ridges on a light background). Defaults to `true`: the
-     * UPx-AP — and most optical sensors — return bright ridges on a dark
-     * background. The HUPx is `false`: its raw frame already carries dark ridges,
-     * and inverting it swaps every ridge ending for a bifurcation, which no
-     * type-aware matcher (the Nexus switch) will accept.
+     * polarity (dark ridges on a light background). Both the UPx-AP and the
+     * HUPx return bright ridges on a dark background over WebUSB, so both are
+     * `true`. Leaving this unset also means invert (decoder default).
      */
     invertDecoded?: boolean;
+    /**
+     * When true, reverse every row after {@link orientation} (a pure horizontal
+     * mirror). The HUPx needs this on top of `"flip-vertical"` — do **not**
+     * substitute `"rotate-180"`, which also flips the tip end-for-end and looks
+     * like a different print.
+     */
+    flipHorizontal?: boolean;
 }
 /**
  * How the decoded grid is turned upright. "flip-vertical" reverses the row
- * order only; "rotate-180" reverses rows and columns (a mirror of
- * "flip-vertical" — getting this wrong yields a mirrored print that no other
- * system's template will ever match).
+ * order only; "flip-horizontal" reverses each row (left↔right); "rotate-180"
+ * reverses the whole buffer (vertical + horizontal — tip ends up at the
+ * opposite end). Prefer `"flip-vertical"` + {@link SecuGenProduct.flipHorizontal}
+ * over `"rotate-180"` when only a mirror is needed on an already-upright print.
  */
-export type FrameOrientation = "flip-vertical" | "rotate-180" | "none";
+export type FrameOrientation = "flip-vertical" | "flip-horizontal" | "rotate-180" | "none";
 /**
  * Scanner tuning options. Every field has a verified SecuGen UPx-AP default
  * (see {@link DEFAULT_SCANNER_OPTIONS}); supply only the fields you want to
@@ -292,6 +308,11 @@ export interface DecodeOptions {
      * left-to-right); pass the detected product's `orientation` for others.
      */
     orientation?: FrameOrientation;
+    /**
+     * Extra left↔right mirror applied after {@link orientation}. See
+     * {@link SecuGenProduct.flipHorizontal}.
+     */
+    flipHorizontal?: boolean;
     /**
      * Adaptive gamma that normalises the frame median to a target brightness so
      * flat / bright captures still show good contrast. Pass `null` to disable.
